@@ -73,7 +73,7 @@ those boundaries. These focused checks do not replace the snapshot commit gate.
 Make builds use `-trimpath` so unchanged packages reuse the Go build cache across
 worktrees and staged snapshot checks. Set `GO_BUILD_FLAGS=` when absolute source
 paths are needed.
-Use `make test-host` for the focused installed-Codex checks with local mock providers;
+Use `make test-host` for the focused runtime checks with local mock providers;
 see [host acceptance](testing-host.md).
 `make test-ui-snapshots` checks fixtures; review before updating. See [snapshot procedures](testing-snapshots.md).
 Enable the repository's Git hooks from the main checkout once per clone:

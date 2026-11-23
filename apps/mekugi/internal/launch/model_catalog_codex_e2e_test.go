@@ -130,9 +130,8 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		string(responses.MustMarshalJSON(patch)) + `); text(await tools.web__run({search_query:[{q:"fixture lookup"}]}));`
 	traceConfirmed := false
 	fixture := &toolFrontendCodexProvider{
-		workspace: workspace,
-		program:   program,
-		expected:  []string{"MODE_OK", "MEKUGI_WEB_SEARCH_FIXTURE_RESULT"}, finalText: "catalog host accepted",
+		program:  program,
+		expected: []string{"MODE_OK", "MEKUGI_WEB_SEARCH_FIXTURE_RESULT"}, finalText: "catalog host accepted",
 		observeRequest: func(body []byte, headers http.Header) error {
 			request, err := codexresponses.ParseRequest(body)
 			if err != nil {

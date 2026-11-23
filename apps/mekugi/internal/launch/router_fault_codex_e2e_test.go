@@ -149,18 +149,19 @@ func routerFaultCodexStreamResponse(wire string) *http.Response {
 func routerFaultCodexEnvironment(t *testing.T) []string {
 	t.Helper()
 	configRoot := t.TempDir()
-	environment := make([]string, 0, len(os.Environ())+3)
+	environment := make([]string, 0, len(os.Environ())+4)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if key == "HOME" || key == "ZDOTDIR" || key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" {
+		switch key {
+		case "HOME", "ZDOTDIR", "CODEX_HOME", "XDG_CONFIG_HOME", "BASH_ENV", "TMPDIR", "CODEX_ARG0_PATH_DIR":
 			continue
-		}
-		if key == "PATH" {
+		case "PATH":
 			entry = "PATH=" + execTrackPath()
 		}
 		environment = append(environment, entry)
 	}
-	return append(environment, "HOME="+configRoot, "CODEX_HOME="+configRoot, "XDG_CONFIG_HOME="+configRoot)
+	// Release builds stage helper executables only outside their temp root.
+	return append(environment, "HOME="+configRoot, "CODEX_HOME="+configRoot, "XDG_CONFIG_HOME="+configRoot, "TMPDIR="+t.TempDir())
 }
 
 func runRouterFaultNativeCodex(t *testing.T, serverURL, prompt string) (stdout, stderr string, runErr error) {

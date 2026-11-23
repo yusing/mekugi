@@ -1,26 +1,27 @@
-# Installed-Codex host acceptance
+# Host acceptance
 
-`codex_e2e`-tagged fixtures exercise installed Codex and `mekugi-app-server` against deterministic
-local mock providers with fake credentials and isolated home/configuration (never live models).
+`codex_e2e`-tagged fixtures exercise `mekugi-app-server` and installed Codex
+against local mock providers with fake credentials and isolated configuration.
 
-Build native binaries (`mekugi-app-server`, `mekugi-models.json`) with `make build-native` and put
-`bin/native` on `PATH`. Remaining stock-CLI fixtures also need `codex` on `PATH`. Raw `go test`
-invocations for compaction fixtures must set `MEKUGI_E2E_MODEL` (set by `Makefile`).
+Run `make build-native` to stage the runtime and its companions in `bin/native`.
+Stock-CLI fixtures also need `codex` on `PATH`. If you run compaction fixtures
+with raw `go test`, set `MEKUGI_E2E_MODEL` yourself.
 
 ## Running fixtures
 
-Run the focused host suite (authenticated frontends, PTY yield/`write_stdin`, nested `mchanges`,
-and Linux sandbox segment reports):
+Run the focused host suite: native `mrun` with piped input, PTY
+yield/`write_stdin`, terminal steering and queues, and command tracking through
+approval, workspace relocation, Dash, and the Linux sandbox. Nested `mchanges`
+uses the stock CLI.
 
 ```sh
-make test-host
+PATH="$PWD/bin/native:$PATH" make test-host
 ```
 
-Check native approval requests and Go command-segment tracking:
+Check the native approval protocol separately:
 
 ```sh
 make test-native NATIVE_TEST_FILTER=suite::v2::shell_guard
-make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags=codex_e2e -count=1'
 ```
 
 Compile all tagged launch fixtures (`apps/mekugi/internal/launch/*_codex_e2e_test.go`) without

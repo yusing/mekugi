@@ -24,7 +24,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-// Dash has no BASH_ENV or DEBUG trap. The installed host must apply the native
+// Dash has no BASH_ENV or DEBUG trap. The managed host must apply the native
 // hook and expose the same streaming, timing and per-command output as Bash.
 func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	resolved, err := filepath.EvalSymlinks("/bin/sh")
@@ -51,12 +51,12 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	gate := filepath.Join(shell.root, "continue")
 	command := "echo DASH_ONE; { sleep 1; while [ ! -f " + quoteShellWord(gate) + " ]; do sleep 0.05; done; }; echo DASH_TWO >&2; false && echo DASH_NEVER"
 	provider := &toolFrontendCodexProvider{
-		program:  `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `,shell:"/bin/sh",login:false}); text(result.output);`,
+		program:  `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `,shell:"/bin/sh",login:false,yield_time_ms:30000}); text(result.output);`,
 		expected: []string{"DASH_ONE", "DASH_TWO"}, finalText: "Recovered after a retry.",
 	}
 	during := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), _ *vt.Emulator) {
 		t.Helper()
-		if _, err := io.WriteString(outer, "\x023"); err != nil {
+		if _, err := io.WriteString(outer, "\x05\x05"); err != nil {
 			t.Fatal(err)
 		}
 		await("┆ DASH_ONE")
@@ -64,16 +64,10 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		if err := os.WriteFile(gate, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := io.WriteString(outer, "\x021"); err != nil {
-			t.Fatal(err)
-		}
 	}
 	after := func(t *testing.T, outer io.Writer, await func(string), awaitFrame func(func(string) bool), screen *vt.Emulator) {
 		t.Helper()
-		if _, err := io.WriteString(outer, "\x023"); err != nil {
-			t.Fatal(err)
-		}
-		await("echo DASH_NEVER · skipped")
+		await("Skipped echo DASH_NEVER")
 		for _, want := range []string{"echo DASH_ONE", "echo DASH_TWO", "false · exit 1", "┆ DASH_ONE", "┆ DASH_TWO"} {
 			if !strings.Contains(screen.String(), want) {
 				t.Fatalf("missing dash segment %q:\n%s", want, screen.String())
@@ -129,13 +123,10 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 			}
 			awaitFrame(func(frame string) bool { return !strings.Contains(frame, "y copy") })
 		}
-		if _, err := io.WriteString(outer, "\x021"); err != nil {
-			t.Fatal(err)
-		}
 	}
-	runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
-		environment: []string{"PATH=" + execTrackPath(), shellinstrumentation.ShTrackerEnvironment + "=" + tracker},
-		codexArgs:   []string{"-c", hook, "-c", state},
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{managedRuntime: true, integration: &integration,
+		environment: []string{"SHELL=/bin/sh", "PATH=" + execTrackPath(), shellinstrumentation.ShTrackerEnvironment + "=" + tracker},
+		codexArgs:   []string{"-c", hook, "-c", state, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`},
 		duringTurn:  during, afterPrompt: after,
 	})
 	names, err := filepath.Glob(filepath.Join(proxy.retained.Store.Directory(), "segments-*.json"))
@@ -327,49 +318,38 @@ func TestAppServerExecTrackNativeCodexMovedWorkspace(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	integration := testAppServerIntegration(proxy)
 	integration.execTrack = shell.hub.Observer
-	environment := []string{"CODEX_THREAD_ID="}
+	environment := []string{"SHELL=" + bash, "PATH=" + execTrackPath()}
 	for _, entry := range shell.env {
 		if strings.HasPrefix(entry, "BASH_ENV=") {
 			environment = append(environment, entry)
 		}
 	}
 	moved := filepath.Join(t.TempDir(), "moved-workspace")
-	environment = append(environment, "PATH="+execTrackPath())
 	provider := &toolFrontendCodexProvider{
-		program: `text((await tools.exec_command({cmd:` + string(responses.MustMarshalJSON("printf 'selected-shell=%s\\n' \"$BASH\"; mv \"$PWD\" "+quoteShellWord(moved)+"; printf MOVED")) + `,shell:` + string(responses.MustMarshalJSON(bash)) + `})).output);
-text((await tools.exec_command({cmd:"git --version; printf AFTER; false && printf NEVER",shell:` + string(responses.MustMarshalJSON(bash)) + `,workdir:` + string(responses.MustMarshalJSON(moved)) + `})).output);`,
+		program: `text((await tools.exec_command({cmd:` + string(responses.MustMarshalJSON("mv \"$PWD\" "+quoteShellWord(moved)+"; printf MOVED")) + `,shell:` + string(responses.MustMarshalJSON(bash)) + `,login:false})).output);
+	text((await tools.exec_command({cmd:"git --version; printf AFTER; false && printf NEVER",shell:` + string(responses.MustMarshalJSON(bash)) + `,login:false,workdir:` + string(responses.MustMarshalJSON(moved)) + `})).output);`,
 		expected: []string{"MOVED", "AFTER"}, finalText: "Recovered after a retry.",
 	}
-	after := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
-		provider.mu.Lock()
-		selected := strings.Contains(provider.output, "selected-shell="+bash)
-		provider.mu.Unlock()
-		if !selected {
-			t.Skip("installed Codex preferred the account shell over the fixture guard")
-		}
-		if _, err := io.WriteString(outer, "\x023"); err != nil {
+	after := func(t *testing.T, outer io.Writer, _ func(string), awaitFrame func(func(string) bool), _ *vt.Emulator) {
+		t.Helper()
+		if _, err := io.WriteString(outer, "\x05\x05"); err != nil {
 			t.Fatal(err)
 		}
-		await("printf NEVER")
-		if frame := screen.String(); !strings.Contains(frame, "Skipped printf NEVER") || !strings.Contains(frame, "┆ AFTER") {
-			t.Fatalf("missing post-relocation segment output/outcomes:\n%s", frame)
-		}
+		awaitFrame(func(frame string) bool {
+			return strings.Contains(frame, "Skipped printf NEVER") && strings.Contains(frame, "┆ AFTER")
+		})
 		runs, err := os.ReadFile(marker)
 		if err != nil || string(runs) != "hook\n" {
 			t.Fatalf("expected one hook before relocation and none afterward: %q, %v", runs, err)
 		}
-		if _, err := io.WriteString(outer, "\x021"); err != nil {
-			t.Fatal(err)
-		}
-		await("A deterministic preview prompt")
 	}
-	runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{managedRuntime: true, integration: &integration,
 		environment: environment, afterPrompt: after, codexArgs: []string{"-c", hook, "-c", state},
 	})
 }
 
-// Installed Codex must retain actual segment reports while its sandbox
-// denies network access and writes to the session-private tracking directory.
+// Shell segments must still report their output and status when the sandbox
+// denies a command network access.
 func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("asserts the Linux sandbox boundary")
@@ -381,7 +361,8 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 			attachTestReplayStore(t, proxy)
 			integration := testAppServerIntegration(proxy)
 			integration.execTrack = shell.hub.Observer
-			var environment []string
+			bash := execTrackShellExecutable(t, "bash")
+			environment := []string{"SHELL=" + bash}
 			for _, entry := range shell.env {
 				if strings.HasPrefix(entry, "BASH_ENV=") {
 					environment = append(environment, entry)
@@ -389,26 +370,25 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 			}
 			command := "{ echo > /dev/tcp/127.0.0.1/9; } 2>&1 | grep -o 'Operation not permitted'; echo SEG_ONE; echo SEG_TWO >&2; false && echo SEG_NEVER"
 			provider := &toolFrontendCodexProvider{
-				program:   `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `}); text(result.output);`,
+				program:   `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `,shell:` + string(responses.MustMarshalJSON(bash)) + `,login:false}); text(result.output);`,
 				expected:  []string{"Operation not permitted", "SEG_ONE", "SEG_TWO"},
 				finalText: "Recovered after a retry.",
 			}
-			after := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
+			after := func(t *testing.T, outer io.Writer, _ func(string), awaitFrame func(func(string) bool), _ *vt.Emulator) {
 				t.Helper()
-				if _, err := io.WriteString(outer, "\x023"); err != nil {
+				if _, err := io.WriteString(outer, "\x05\x05"); err != nil {
 					t.Fatal(err)
 				}
-				await("Skipped echo SEG_NEVER")
-				for _, want := range []string{"echo SEG_ONE", "echo SEG_TWO", "false · exit 1", "┆ SEG_ONE", "┆ SEG_TWO"} {
-					if !strings.Contains(screen.String(), want) {
-						t.Fatalf("missing segment evidence %q:\n%s", want, screen.String())
+				awaitFrame(func(frame string) bool {
+					for _, want := range []string{"echo SEG_ONE", "echo SEG_TWO", "false · exit 1", "┆ SEG_ONE", "┆ SEG_TWO", "Skipped echo SEG_NEVER"} {
+						if !strings.Contains(frame, want) {
+							return false
+						}
 					}
-				}
-				if _, err := io.WriteString(outer, "\x021"); err != nil {
-					t.Fatal(err)
-				}
+					return true
+				})
 			}
-			runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
+			runAppServerPreviewWith(t, provider, proxy, appServerPreview{managedRuntime: true, integration: &integration,
 				environment: environment,
 				codexArgs:   []string{"-c", `sandbox_mode="` + sandbox + `"`, "-c", `approval_policy="on-request"`},
 				approvals:   true,

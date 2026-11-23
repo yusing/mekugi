@@ -44,7 +44,7 @@ func (p *appQueueProvider) ForwardExecution(ctx, _ context.Context, body []byte,
 // Real Codex discards uncommitted steers on interrupt, commits accepted steers
 // at the next sampling boundary, and starts queued input as its own turn.
 func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	}()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="Native control fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="mock-model"`, "-c", "features.plugins=false")
+		cmd := exec.CommandContext(ctx, codex, "-c", `model_providers.preview={name="Native control fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="mock-model"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")
@@ -108,8 +108,11 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	}
 	settled("resubmitted turn running")
 	terminal.send("queued later\t")
+	terminal.await("↳ queued later")
 
-	terminal.send("steer commits\r")
+	terminal.send("steer commits")
+	terminal.await("❯ steer commits")
+	terminal.send("\r")
 	settled("second steer accepted")
 	terminal.await("↳ steer commits")
 	close(p.gates[1])
@@ -125,9 +128,13 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 		return composerStatusShows(screen, "Completed") && !strings.Contains(screen, "↳")
 	})
 	terminal.send("/compact\r")
-	next("manual compaction")
-	terminal.await("Context compacted")
+	terminal.await("Context reset")
 	terminal.awaitStatus("Completed")
+	select {
+	case body := <-p.requests:
+		t.Fatalf("manual reset unexpectedly sampled the model: %s", body)
+	default:
+	}
 	terminal.send("/clear\r")
 	terminal.awaitMatch("fresh session", func(screen string) bool {
 		return strings.Contains(screen, "Ready") && !strings.Contains(screen, "steer interrupts") && !strings.Contains(screen, "queued later")

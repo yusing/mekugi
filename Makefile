@@ -38,10 +38,13 @@ TEST_FLAGS ?=
 export MEKUGI_E2E_MODEL ?= gpt-6-luna
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
 TEST_PARALLEL ?= 32
-HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
-	TestMRunNativeCodexYieldAndWriteStdinE2E \
+HOST_ACCEPTANCE_TESTS := TestAppServerNativeMRunAndPTY \
 	TestMChangesNestedNativeCodexE2E \
-	TestAppServerExecTrackNativeCodexSandbox
+	TestAppServerExecTrackNativeCodex \
+	TestAppServerExecTrackNativeCodexDash \
+	TestAppServerExecTrackNativeCodexMovedWorkspace \
+	TestAppServerExecTrackNativeCodexSandbox \
+	TestAppServerSteerAndQueueNativeCodex
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= @snapshots
 # Go's test cache keys on environment values tests read. Drop values a Mekugi
@@ -163,7 +166,7 @@ test-saved-diff:
 test-live-preview:
 	$(MAKE) --no-print-directory test TEST_PACKAGES='./modules/livepreview/...'
 
-# Installed Codex, isolated local mocks, no installation or live model requests.
+# Managed runtime and stock Codex against isolated local mocks.
 test-host:
 	@codex --version
 	@set -eu; \

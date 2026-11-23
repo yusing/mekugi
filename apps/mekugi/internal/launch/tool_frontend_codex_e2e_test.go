@@ -7,24 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/mcptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func buildToolRegistryForTest(
@@ -44,20 +37,6 @@ func newShellWorkerTestInvocation(directory string, environment ...string) shell
 	return shellWorkerTestInvocation{directory: directory, environment: append(base, environment...)}
 }
 
-func runOwnedToolPluginWorker(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	invocation, err := frontends.Recognize(argv0)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return true, 1
-	}
-	if invocation == nil {
-		return false, 0
-	}
-	return true, invocation.Run(service, commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
-}
-
-const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"
-
 func setCodexFrontendLoginEnvironment(t *testing.T, directory string) {
 	t.Helper()
 	quote := "'" + strings.ReplaceAll(directory, "'", "'\\''") + "'"
@@ -69,7 +48,6 @@ func setCodexFrontendLoginEnvironment(t *testing.T, directory string) {
 	t.Setenv("BASH_ENV", startup)
 }
 
-// Pinned test workers use the same authenticated dispatch as the executable.
 func init() {
 	if len(os.Args) == 3 && os.Args[1] == "mcp-bridge" {
 		if err := mcptransport.RelayStdio(context.Background(), os.Args[2], os.Stdin, os.Stdout); err != nil {
@@ -78,19 +56,10 @@ func init() {
 		}
 		os.Exit(0)
 	}
-	if os.Getenv(toolFrontendCodexWorkerEnvironment) == "1" {
-		if handled, code := runOwnedToolPluginWorker(testHistory(), testCommands(),
-			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
-		); handled {
-			os.Exit(code)
-		}
-		os.Exit(99)
-	}
 }
 
 type toolFrontendCodexProvider struct {
 	mu             sync.Mutex
-	workspace      string
 	program        string
 	expected       []string
 	finalText      string
@@ -123,16 +92,9 @@ func (p *toolFrontendCodexProvider) ForwardExecution(
 			return nil, fmt.Errorf("Codex request does not advertise stock exec_command")
 		}
 		p.callSent = true
-		program := p.program
-		if program == "" {
-			program = `const result = await tools.exec_command({"cmd":` +
-				string(responses.MustMarshalJSON("printf 'stdin is not worker JSON\\n' | mrun --max-tokens 1024 sh -c 'printf \"%s|%s|%s|%s|\" \"$PWD\" \"$MEKUGI_FRONTEND_TEST\" \"$1\" \"$2\"; cat' sh one 'two words'")) +
-				`,"workdir":` + string(responses.MustMarshalJSON(p.workspace)) + `});
-text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
-		}
 		item = map[string]any{
 			"type": "custom_tool_call", "id": "frontend-item", "call_id": "frontend-call",
-			"name": "exec", "status": "completed", "input": program,
+			"name": "exec", "status": "completed", "input": p.program,
 		}
 	default:
 		var request struct {
@@ -141,17 +103,12 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 		if err := json.Unmarshal(body, &request); err != nil {
 			return nil, err
 		}
-		want := p.workspace + "|inherited|one|two words|stdin is not worker JSON"
 		for _, input := range request.Input {
 			if responses.StringField(input, "type") != "custom_tool_call_output" || responses.StringField(input, "call_id") != "frontend-call" {
 				continue
 			}
 			output := string(input["output"])
 			p.output = output
-			if len(p.expected) == 0 {
-				p.resultSeen = strings.Contains(output, want) && strings.Contains(output, `\"exit_code\":0`)
-				continue
-			}
 			p.resultSeen = true
 			for _, expected := range p.expected {
 				p.resultSeen = p.resultSeen && strings.Contains(output, expected)
@@ -160,14 +117,10 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 		if !p.resultSeen {
 			return nil, fmt.Errorf("stock tool result lacks expected output: %.1500s", p.output)
 		}
-		finalText := p.finalText
-		if finalText == "" {
-			finalText = "frontend host accepted"
-		}
 		item = map[string]any{
 			"type": "message", "id": "frontend-finish", "role": "assistant", "status": "completed",
 			"content": []any{map[string]any{
-				"type": "output_text", "text": finalText, "annotations": []any{},
+				"type": "output_text", "text": p.finalText, "annotations": []any{},
 			}},
 		}
 	}
@@ -202,123 +155,33 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 	return testGatewayResponse(result, nil)
 }
 
-func TestNativeToolFrontendCodexE2E(t *testing.T) {
-	codex, err := exec.LookPath("codex")
-	if err != nil {
-		t.Fatal("installed Codex is required for the frontend acceptance gate")
-	}
-	registry, err := buildToolRegistryForTest(t, t.Context())
+// Check bundled mrun's process inputs and the stock PTY input path.
+func TestAppServerNativeMRunAndPTY(t *testing.T) {
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := registry.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	frontend := filepath.Join(registry.FrontendDirectory, "mrun")
-	if _, err := os.Stat(frontend); err != nil {
-		t.Fatal("native mrun frontend is unavailable")
-	}
-	workspace := t.TempDir()
-	workspace, err = filepath.EvalSymlinks(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider := &toolFrontendCodexProvider{workspace: workspace}
-	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
-	defer server.Close()
-
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	setCodexFrontendLoginEnvironment(t, filepath.Dir(frontend))
-	t.Setenv("MEKUGI_FRONTEND_TEST", "inherited")
-	t.Setenv(toolFrontendCodexWorkerEnvironment, "1")
-	config := `model_providers.frontend_fixture={name="frontend_fixture",base_url=` +
-		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, codex,
-		"-c", config, "-c", `model_provider="frontend_fixture"`, "-c", "features.plugins=false",
-		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
-		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
-		"-C", workspace, "Exercise the native executable frontend fixture.",
-	)
-	var stdout, stderr bytes.Buffer
-	command.Stdout, command.Stderr = &stdout, &stderr
-	if err := command.Run(); err != nil {
-		t.Fatalf("Codex frontend fixture: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
-	}
-	provider.mu.Lock()
-	defer provider.mu.Unlock()
-	if provider.turns != 2 || !provider.resultSeen || !strings.Contains(stdout.String(), "frontend host accepted") {
-		t.Fatalf("frontend acceptance: turns=%d result=%t\nstdout: %s\nstderr: %s",
-			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
-	}
-}
-
-func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
-	codex, err := exec.LookPath("codex")
-	if err != nil {
-		t.Fatal("installed Codex is required for the mrun continuation acceptance gate")
-	}
-	registry, err := buildToolRegistryForTest(t, t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := registry.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	frontend := filepath.Join(registry.FrontendDirectory, "mrun")
-	if _, err := os.Stat(frontend); err != nil {
-		t.Fatal("mrun session frontend is unavailable")
-	}
-	workspace := t.TempDir()
-	workspace, err = filepath.EvalSymlinks(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	commandText := `mrun --max-tokens 100 -- sh -c 'printf ready > ready; IFS= read -r value; printf "continued:%s\n" "$value"'`
-	program := `const started = await tools.exec_command({"cmd":` + string(responses.MustMarshalJSON(commandText)) +
-		`,"workdir":` + string(responses.MustMarshalJSON(workspace)) + `,"tty":true,"yield_time_ms":250});
-if (typeof started.session_id !== "number") throw new Error("mrun did not yield a host session");
-const completed = await tools.write_stdin({"session_id":started.session_id,"chars":"codex-input\n","yield_time_ms":30000,"max_output_tokens":1000});
-text(JSON.stringify({started, completed}));`
+	bash := execTrackShellExecutable(t, "bash")
+	mrun := `test "$(command -v mrun)" = "$CODEX_ARG0_PATH_DIR/mrun" || exit 1
+printf 'piped input\n' | mrun --max-tokens 1024 -- sh -c 'printf "%s|%s|%s|%s|" "$PWD" "$MEKUGI_FRONTEND_TEST" "$1" "$2"; cat' sh one 'two words'`
+	pty := `IFS= read -r value; printf 'continued:%s\n' "$value"`
+	shell := string(responses.MustMarshalJSON(bash))
 	provider := &toolFrontendCodexProvider{
-		workspace: workspace,
-		program:   program,
-		expected:  []string{"continued:codex-input", `\"exit_code\":0`, "session_id"},
-		finalText: "mrun continuation accepted",
+		program: `const bounded = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(mrun)) +
+			`,shell:` + shell + `,login:false,workdir:` + string(responses.MustMarshalJSON(workspace)) + `});
+if (bounded.exit_code !== 0) throw new Error(JSON.stringify(bounded));
+text(bounded.output);
+const started = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(pty)) +
+			`,shell:` + shell + `,login:false,tty:true,yield_time_ms:250});
+if (typeof started.session_id !== "number") throw new Error("PTY command did not yield a process session");
+const completed = await tools.write_stdin({session_id:started.session_id,chars:"codex-input\n",yield_time_ms:5000});
+if (completed.exit_code !== 0) throw new Error(JSON.stringify(completed));
+text(completed.output);`,
+		expected:  []string{workspace + "|inherited|one|two words|piped input", "continued:codex-input"},
+		finalText: "Recovered after a retry.",
 	}
-	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
-	defer server.Close()
-
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	setCodexFrontendLoginEnvironment(t, filepath.Dir(frontend))
-	t.Setenv(routerTestWorkerEnvironment, "1")
-	config := `model_providers.frontend_fixture={name="frontend_fixture",base_url=` +
-		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, codex,
-		"-c", config, "-c", `model_provider="frontend_fixture"`, "-c", "features.plugins=false",
-		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
-		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
-		"-C", workspace, "Exercise mrun yielding and stock write_stdin continuation.",
-	)
-	var stdout, stderr bytes.Buffer
-	command.Stdout, command.Stderr = &stdout, &stderr
-	if err := command.Run(); err != nil {
-		t.Fatalf("Codex mrun continuation fixture: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
-	}
-	provider.mu.Lock()
-	defer provider.mu.Unlock()
-	if provider.turns != 2 || !provider.resultSeen ||
-		!strings.Contains(stdout.String(), "mrun continuation accepted") {
-		t.Fatalf("mrun continuation acceptance: turns=%d result=%t\nstdout: %s\nstderr: %s",
-			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
-	}
+	runAppServerPreviewWith(t, provider, nil, appServerPreview{
+		managedRuntime: true,
+		environment:    []string{"SHELL=" + bash, "MEKUGI_FRONTEND_TEST=inherited"},
+	})
 }
