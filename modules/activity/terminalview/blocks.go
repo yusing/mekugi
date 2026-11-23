@@ -61,6 +61,9 @@ func (b Block) compactSingleLine() bool {
 	if b.VCS() && len(b.Changes) == 0 && len(b.Tail) > 0 {
 		return false
 	}
+	if b.Verb == "Diff" && hasIncompleteCapture(b.Changes) {
+		return false
+	}
 	return b.Kind == "op" || b.Kind == "reads" || b.Kind == "attachments"
 }
 

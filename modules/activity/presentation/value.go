@@ -58,6 +58,8 @@ type Value struct {
 	Section                                       int
 	Path, SyntaxPath, Workdir                     string
 	ShowWorkdir                                   bool
+	VCSTool, VCSWorktree                          string
+	VCSStaged                                     bool
 	From, To, Owner                               string
 	WaitTargets                                   []WaitTarget
 	WaitTimeout, WaitReason                       string

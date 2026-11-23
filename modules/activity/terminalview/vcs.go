@@ -69,21 +69,40 @@ func (p *Painter) vcsCompactSummary(block Block) string {
 			return terminalui.Dim + "no changes" + terminalui.Undim
 		}
 	case "Status":
-		return vcsStatusSummary(p.Theme, block.Changes, false)
+		return vcsStatusSummary(p.Theme, block.Changes, nil, false, false)
 	case "Diff/Status":
 		var diffChanges, statusChanges []ChangeRow
-		hasDiff := false
+		var diffStaged, hasDiff bool
 		for _, member := range block.Members {
 			switch member.Verb {
 			case "Diff":
-				hasDiff = true
-				diffChanges = append(diffChanges, member.Changes...)
+				if !hasDiff {
+					hasDiff = true
+					diffStaged = member.VCSStaged
+					diffChanges = member.Changes
+				}
 			case "Status":
-				statusChanges = append(statusChanges, member.Changes...)
+				if len(statusChanges) == 0 {
+					statusChanges = member.Changes
+				}
 			}
 		}
 		diffText := vcsDiffShortstat(p.Theme, diffChanges)
-		statusText := vcsStatusSummary(p.Theme, statusChanges, hasDiff && diffText != "")
+		var diffPaths map[string]bool
+		if hasDiff && diffText != "" {
+			diffPaths = make(map[string]bool, len(diffChanges))
+			for _, row := range diffChanges {
+				if isConfirmedFileChange(row) {
+					if row.Label != "" {
+						diffPaths[row.Label] = true
+					}
+					if row.From != "" {
+						diffPaths[row.From] = true
+					}
+				}
+			}
+		}
+		statusText := vcsStatusSummary(p.Theme, statusChanges, diffPaths, diffStaged, hasDiff && diffText != "")
 		switch {
 		case diffText != "" && statusText != "":
 			return diffText + terminalui.Dim + " · " + terminalui.Undim + statusText
@@ -100,6 +119,31 @@ func (p *Painter) vcsCompactSummary(block Block) string {
 	return ""
 }
 
+// isConfirmedFileChange reports whether a ChangeRow represents an actual file
+// modification rather than a summary footer, unconfirmed capture gap, or
+// standalone diagnostic note.
+func isConfirmedFileChange(row ChangeRow) bool {
+	if row.Footer || row.Code == "?" || row.Verb == "?" {
+		return false
+	}
+	return row.Label != ""
+}
+
+// hasIncompleteCapture reports whether change rows carry capture-gap
+// diagnostics (e.g. mchanges incomplete scope or unconfirmed `?` entries) that
+// would be hidden or miscounted by a compact shortstat.
+func hasIncompleteCapture(changes []ChangeRow) bool {
+	for _, row := range changes {
+		if row.Footer {
+			continue
+		}
+		if row.Code == "?" || row.Verb == "?" || (row.Code == "" && row.Verb == "" && row.Label == "" && row.Note != "") {
+			return true
+		}
+	}
+	return false
+}
+
 // vcsDiffShortstat formats diff change rows like `git diff --shortstat`:
 // e.g. `7 files changed, +69 -26`.
 func vcsDiffShortstat(theme diffrender.Theme, changes []ChangeRow) string {
@@ -109,13 +153,15 @@ func vcsDiffShortstat(theme diffrender.Theme, changes []ChangeRow) string {
 	files := 0
 	footerFiles := 0
 	for _, row := range changes {
-		if !row.Footer {
+		if row.Footer {
+			if n := parseFileCount(row.Note); n > footerFiles {
+				footerFiles = n
+			}
+		} else if isConfirmedFileChange(row) {
 			files++
-		} else if n := parseFileCount(row.Note); n > footerFiles {
-			footerFiles = n
 		}
 	}
-	if files == 0 {
+	if footerFiles > 0 {
 		files = footerFiles
 	}
 	added, removed := presentation.ChangeTotals(changes)
@@ -171,14 +217,15 @@ func parseFileCount(note string) int {
 }
 
 // vcsStatusSummary formats git/svn status rows into a compact single-line summary.
-// When withDiff is true (combined Diff/Status), tracked-change counts already
-// covered by the diff shortstat are omitted so only additional status facts
-// (conflicts, untracked files, branch/ahead/behind) are appended.
-func vcsStatusSummary(theme diffrender.Theme, changes []ChangeRow, withDiff bool) string {
+// When withDiff is true (combined Diff/Status), tracked status rows are only
+// omitted when diffPaths proves the diff covers that path on the matching side
+// (unstaged vs staged), so staged changes after an unstaged diff or uncovered
+// files remain visible.
+func vcsStatusSummary(theme diffrender.Theme, changes []ChangeRow, diffPaths map[string]bool, diffStaged, withDiff bool) string {
 	if len(changes) == 0 {
 		return ""
 	}
-	changed, untracked, conflicted := 0, 0, 0
+	staged, changed, untracked, conflicted := 0, 0, 0, 0
 	branch, branchNote, clean := "", "", false
 	for _, row := range changes {
 		if row.Footer {
@@ -202,7 +249,19 @@ func vcsStatusSummary(theme diffrender.Theme, changes []ChangeRow, withDiff bool
 		case strings.ContainsAny(row.Code, "U") || row.Code == "AA" || row.Code == "DD":
 			conflicted++
 		default:
-			changed++
+			if !withDiff {
+				changed++
+				continue
+			}
+			isStaged := len(row.Code) == 2 && row.Code[0] != ' ' && row.Code[0] != '?'
+			isUnstaged := len(row.Code) == 2 && row.Code[1] != ' ' && row.Code[1] != '?'
+			covered := diffPaths[row.Label] || (row.From != "" && diffPaths[row.From])
+			if isStaged && (!diffStaged || !covered) {
+				staged++
+			}
+			if (!isStaged || isUnstaged) && (diffStaged || !covered) {
+				changed++
+			}
 		}
 	}
 	var parts []string
@@ -222,49 +281,38 @@ func vcsStatusSummary(theme diffrender.Theme, changes []ChangeRow, withDiff bool
 		}
 		parts = append(parts, theme.Danger()+fmt.Sprintf("%d %s", conflicted, unit)+terminalui.Reset)
 	}
-	if !withDiff && changed > 0 {
+	if staged > 0 {
+		parts = append(parts, terminalui.Dim+fmt.Sprintf("%d staged", staged)+terminalui.Undim)
+	}
+	if changed > 0 {
 		parts = append(parts, terminalui.Dim+fmt.Sprintf("%d modified", changed)+terminalui.Undim)
 	}
 	if untracked > 0 {
 		parts = append(parts, terminalui.Dim+fmt.Sprintf("%d untracked", untracked)+terminalui.Undim)
 	}
-	if !withDiff && changed == 0 && untracked == 0 && conflicted == 0 && clean {
+	if !withDiff && staged == 0 && changed == 0 && untracked == 0 && conflicted == 0 && clean {
 		parts = append(parts, terminalui.Dim+"clean"+terminalui.Undim)
 	}
 	return strings.Join(parts, terminalui.Dim+" · "+terminalui.Undim)
 }
 
-// MergeVCSDiffStatus combines adjacent settled Diff and Status operations that
-// target the same worktree into a single Diff/Status row for default view,
-// retaining all original operations as Members for the output dialog.
+// MergeVCSDiffStatus combines an adjacent settled Diff and Status pair that
+// targets the same worktree into a single Diff/Status row for default view,
+// retaining both original operations as Members for the output dialog.
 func MergeVCSDiffStatus(blocks []Block) []Block {
 	var out []Block
 	for i := 0; i < len(blocks); {
-		tool, worktree, ok := vcsWorktreeKey(blocks[i])
-		if !ok {
-			out = append(out, blocks[i])
-			i++
-			continue
-		}
-		j := i + 1
-		hasDiff := blocks[i].Verb == "Diff"
-		hasStatus := blocks[i].Verb == "Status"
-		for j < len(blocks) {
-			nextTool, nextWorktree, nextOK := vcsWorktreeKey(blocks[j])
-			if !nextOK || nextTool != tool || nextWorktree != worktree {
-				break
+		if i+1 < len(blocks) {
+			t1, w1, ok1 := vcsWorktreeKey(blocks[i])
+			t2, w2, ok2 := vcsWorktreeKey(blocks[i+1])
+			if ok1 && ok2 && t1 == t2 && w1 == w2 && blocks[i].Verb != blocks[i+1].Verb {
+				out = append(out, combineVCSDiffStatus(blocks[i:i+2], t1))
+				i += 2
+				continue
 			}
-			hasDiff = hasDiff || blocks[j].Verb == "Diff"
-			hasStatus = hasStatus || blocks[j].Verb == "Status"
-			j++
 		}
-		if !hasDiff || !hasStatus {
-			out = append(out, blocks[i:j]...)
-			i = j
-			continue
-		}
-		out = append(out, combineVCSDiffStatus(blocks[i:j], tool))
-		i = j
+		out = append(out, blocks[i])
+		i++
 	}
 	return out
 }
@@ -276,6 +324,9 @@ func vcsWorktreeKey(b Block) (tool, worktree string, ok bool) {
 	if b.Running || b.Skipped || b.Pending || b.Requested || b.FailedOutcome() || b.ExitUnknown() || b.Approval != "" {
 		return "", "", false
 	}
+	if b.VCSTool != "" {
+		return b.VCSTool, b.VCSWorktree, true
+	}
 	_, source, ok := presentation.VCSSource(b.Label)
 	if !ok {
 		return "", "", false
@@ -285,13 +336,16 @@ func vcsWorktreeKey(b Block) (tool, worktree string, ok bool) {
 		return "", "", false
 	}
 	tool = fields[0]
+	// Without structured command identity, only match unambiguous labels without
+	// multi-token -C directory paths.
+	rest := strings.TrimSpace(strings.TrimPrefix(source, tool))
 	dir := ""
-	for k := 1; k+1 < len(fields) && fields[k] == "-C"; k += 2 {
-		if dir == "" || filepath.IsAbs(fields[k+1]) {
-			dir = fields[k+1]
-		} else {
-			dir = filepath.Join(dir, fields[k+1])
+	if strings.HasPrefix(rest, "-C ") {
+		after := strings.TrimSpace(strings.TrimPrefix(rest, "-C "))
+		if strings.ContainsAny(after, " \t") {
+			return "", "", false
 		}
+		dir = after
 	}
 	switch {
 	case filepath.IsAbs(dir):
@@ -307,7 +361,7 @@ func vcsWorktreeKey(b Block) (tool, worktree string, ok bool) {
 }
 
 func combineVCSDiffStatus(run []Block, tool string) Block {
-	var diffBlock *Block
+	var diffBlock, statusBlock *Block
 	var members []presentation.Value
 	var duration = run[0].Duration
 	for idx := range run {
@@ -318,18 +372,22 @@ func combineVCSDiffStatus(run []Block, tool string) Block {
 		if run[idx].Verb == "Diff" && diffBlock == nil {
 			diffBlock = &run[idx]
 		}
+		if run[idx].Verb == "Status" && statusBlock == nil {
+			statusBlock = &run[idx]
+		}
 	}
 	base := run[0]
 	if diffBlock != nil {
 		base = *diffBlock
 	}
 	head, source, _ := presentation.VCSSource(base.Label)
-	// Preserve any -C worktree selector in the combined source label, dropping
-	// diff-only format flags such as --numstat or --stat.
-	fields := strings.Fields(source)
-	sourceParts := []string{tool}
-	for k := 1; k+1 < len(fields) && fields[k] == "-C"; k += 2 {
-		sourceParts = append(sourceParts, "-C", fields[k+1])
+	if statusBlock != nil {
+		if _, statusSource, ok := presentation.VCSSource(statusBlock.Label); ok && statusSource != "" {
+			source = statusSource
+		}
+	}
+	if source == "" {
+		source = tool
 	}
 	if head == "" {
 		head = "`working tree`"
@@ -337,7 +395,7 @@ func combineVCSDiffStatus(run []Block, tool string) Block {
 	merged := base
 	merged.Value = presentation.Group(base.Value, members)
 	merged.Verb = "Diff/Status"
-	merged.Label = head + " · " + strings.Join(sourceParts, " ")
+	merged.Label = head + " · " + source
 	merged.Duration = duration
 	merged.Changes = nil
 	merged.Tail, merged.TailOmitted = nil, 0

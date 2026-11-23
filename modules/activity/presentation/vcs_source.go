@@ -27,6 +27,7 @@ type vcsCall struct {
 	display           string // The operation paragraph.
 	repositoryUnknown bool   // An env wrapper may override Git repository selection.
 	commitPrefix      bool   // Successful output can safely precede a commit header.
+	staged            bool   // git diff --cached / --staged
 }
 
 const (
@@ -476,7 +477,7 @@ func vcsGitDiff(show bool, args []string, source string) (vcsCall, bool) {
 	case scope == "":
 		scope = "working tree"
 	}
-	call := vcsCall{kind: vcsDiff, format: format, commitPrefix: !show && (check || slices.Contains([]string{"stat", "numstat", "shortstat"}, format))}
+	call := vcsCall{kind: vcsDiff, format: format, staged: cached, commitPrefix: !show && (check || slices.Contains([]string{"stat", "numstat", "shortstat"}, format))}
 	switch {
 	case check:
 		call.kind = vcsCheck
@@ -721,4 +722,24 @@ func VCSStatement(statement *syntax.Stmt) (string, bool) {
 func VCSPreservesDirectory(source string) bool {
 	_, ok := vcsOutputCall(source)
 	return ok
+}
+
+// vcsIdentity resolves a literal git or svn command's structured tool,
+// worktree directory, and staged-diff flag from parsed shell arguments.
+func vcsIdentity(source, cwd string) (tool, worktree string, staged, ok bool) {
+	call, ok := vcsOutputCall(source)
+	if !ok || call.repositoryUnknown || (call.tool != "git" && call.tool != "svn") {
+		return "", "", false, false
+	}
+	switch {
+	case filepath.IsAbs(call.dir):
+		worktree = filepath.Clean(call.dir)
+	case cwd != "" && call.dir != "":
+		worktree = filepath.Clean(filepath.Join(cwd, call.dir))
+	case cwd != "":
+		worktree = filepath.Clean(cwd)
+	case call.dir != "":
+		worktree = filepath.Clean(call.dir)
+	}
+	return call.tool, worktree, call.staged, true
 }

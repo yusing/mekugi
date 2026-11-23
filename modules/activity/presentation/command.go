@@ -166,6 +166,11 @@ func (c Command) ApplyFacts(values []Value) {
 		if c.Running && value.Started.IsZero() {
 			value.Started = c.Observed
 		}
+		if value.VCS() {
+			if tool, worktree, staged, ok := vcsIdentity(cmp.Or(c.Display, c.Script), c.Directory); ok {
+				value.VCSTool, value.VCSWorktree, value.VCSStaged = tool, worktree, staged
+			}
+		}
 	}
 }
 
@@ -329,6 +334,11 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 		last.Tail, last.TailOmitted, last.TailClipped, last.Output = segment.Tail, segment.TailOmitted, segment.TailClipped, outputID(segment.Output, segmentIndex+2)
 		last.Changes = segment.Changes
+		if last.VCS() {
+			if tool, worktree, staged, ok := vcsIdentity(cmp.Or(segment.Display, segment.Source), c.Directory); ok {
+				last.VCSTool, last.VCSWorktree, last.VCSStaged = tool, worktree, staged
+			}
+		}
 		if len(operations) == 1 && !segment.Running && !segment.Skipped && !segment.Pending {
 			last.Results = segment.Results
 			if len(c.Segments) == 1 {

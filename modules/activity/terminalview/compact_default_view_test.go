@@ -190,3 +190,107 @@ func TestUISnapshotCompactDefaultViewRevamp(t *testing.T) {
 	v.Expansion = 0
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/compact_default_view.txt", append(v.RenderConversation(100).Lines, "plain after compact view"), 100)
 }
+
+func TestCompactDefaultViewVCSEdgeCases(t *testing.T) {
+	p := Painter{Theme: diffrender.DarkTheme}
+
+	// 1. Combined unstaged diff + status preserves staged changes.
+	diffBlock := Block{
+		Value: presentation.Value{
+			Kind: "op", Verb: "Diff", Label: "`working tree` · git --stat",
+			VCSTool: "git", VCSWorktree: "/repo", Exited: true,
+			Changes: []ChangeRow{
+				{Code: "M", Label: "b.go", Added: 5, Removed: 1},
+			},
+		},
+		Annotation: Annotation{Compact: true},
+	}
+	statusBlock := Block{
+		Value: presentation.Value{
+			Kind: "op", Verb: "Status", Label: "`working tree` · git",
+			VCSTool: "git", VCSWorktree: "/repo", Exited: true,
+			Changes: []ChangeRow{
+				{Code: "A ", Label: "a.go"},
+				{Code: " M", Label: "b.go"},
+			},
+		},
+		Annotation: Annotation{Compact: true},
+	}
+	merged := MergeVCSDiffStatus([]Block{diffBlock, statusBlock})
+	if len(merged) != 1 || merged[0].Verb != "Diff/Status" {
+		t.Fatalf("expected 1 combined Diff/Status block, got %d", len(merged))
+	}
+	merged[0].Compact = true
+	line := ansi.Strip(strings.Join(p.Block(merged[0], 120), "\n"))
+	if !strings.Contains(line, "1 file changed, +5 -1") || !strings.Contains(line, "1 staged") {
+		t.Fatalf("combined diff/status hid staged file: %s", line)
+	}
+
+	// 2. Separate worktrees with spaces in -C paths are NOT merged.
+	repoOneCmd := presentation.Command{
+		Source: 1, Script: "git -C 'repo one' diff --stat", Display: "git -C 'repo one' diff --stat",
+		Text: "Diff `working tree` · git -C repo one --stat", Directory: "/work", Exited: true,
+	}
+	repoTwoCmd := presentation.Command{
+		Source: 2, Script: "git -C 'repo two' status", Display: "git -C 'repo two' status",
+		Text: "Status `working tree` · git -C repo two", Directory: "/work", Exited: true,
+	}
+	v1 := presentation.Operations(repoOneCmd.Text)
+	repoOneCmd.ApplyFacts(v1)
+	v2 := presentation.Operations(repoTwoCmd.Text)
+	repoTwoCmd.ApplyFacts(v2)
+	if v1[0].VCSWorktree == v2[0].VCSWorktree {
+		t.Fatalf("distinct worktrees collided: %q == %q", v1[0].VCSWorktree, v2[0].VCSWorktree)
+	}
+	if separate := MergeVCSDiffStatus([]Block{{Value: v1[0]}, {Value: v2[0]}}); len(separate) != 2 {
+		t.Fatalf("separate worktrees with spaces were merged: %+v", separate)
+	}
+
+	// 3. Repeated diffs before status do not double-count files.
+	repeated := MergeVCSDiffStatus([]Block{diffBlock, diffBlock, statusBlock})
+	if len(repeated) != 2 || repeated[0].Verb != "Diff" || repeated[1].Verb != "Diff/Status" {
+		t.Fatalf("repeated diffs should only pair the adjacent diff+status, got %d blocks", len(repeated))
+	}
+	repeated[1].Compact = true
+	repeatedLine := ansi.Strip(strings.Join(p.Block(repeated[1], 120), "\n"))
+	if !strings.Contains(repeatedLine, "1 file changed, +5 -1") || strings.Contains(repeatedLine, "2 files changed") {
+		t.Fatalf("repeated diff inflated file count: %s", repeatedLine)
+	}
+
+	// 4. Limited git diff --stat respects authoritative footer file count.
+	limited := Block{
+		Value: presentation.Value{
+			Kind: "op", Verb: "Diff", Label: "`working tree` · git --stat",
+			Exited: true,
+			Changes: []ChangeRow{
+				{Code: "M", Label: "a.go", Added: 2, Removed: 1},
+				{Footer: true, Note: "10 files", Added: 40, Removed: 12},
+			},
+		},
+		Annotation: Annotation{Compact: true},
+	}
+	limitedLine := ansi.Strip(strings.Join(p.Block(limited, 120), "\n"))
+	if !strings.Contains(limitedLine, "10 files changed, +40 -12") {
+		t.Fatalf("limited stat undercounted files: %s", limitedLine)
+	}
+
+	// 5. Incomplete mchanges capture stays expanded and does not count warnings/? as changed files.
+	incomplete := Block{
+		Value: presentation.Value{
+			Kind: "op", Verb: "Diff", Label: "`amber1` · mchanges amber1 --summary",
+			Exited: true,
+			Changes: []ChangeRow{
+				{Note: "amber1 incomplete captured scope; use --history for diagnostics"},
+				{Verb: "Created", Label: "new.txt", Added: 2},
+				{Code: "?", Label: "outside.txt", Note: "resolved path is outside the pre-cell baseline"},
+			},
+		},
+		Annotation: Annotation{Compact: true},
+	}
+	if incomplete.compactSingleLine() {
+		t.Fatal("incomplete mchanges capture should not collapse into a single line")
+	}
+	if stat := ansi.Strip(vcsDiffShortstat(diffrender.DarkTheme, incomplete.Changes)); stat != "1 file changed, +2" {
+		t.Fatalf("vcsDiffShortstat counted capture gaps as changed files: %q", stat)
+	}
+}
